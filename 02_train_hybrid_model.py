@@ -13,6 +13,10 @@ import torch
 from torch import nn
 
 from hybrid_model import LANGUAGE_MODEL_ID, QuantumTextHead, encode_texts, load_language_model
+from importlib import import_module
+
+# 10_embed_dataset.py is also importable despite its filename starting with a digit.
+embed_utils = import_module("10_embed_dataset")
 
 ROOT = Path(__file__).resolve().parent
 CHECKPOINT = ROOT / "models" / "quantum_head.pt"
@@ -84,7 +88,8 @@ def evaluate(head, x, labels, batch_size):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", type=Path, default=ROOT / "data" / "sentences.csv")
+    parser.add_argument("--dataset", type=Path, default=None, help="CSV input, or optional fingerprint check for --embeddings")
+    parser.add_argument("--embeddings", type=Path, default=None, help="Load cached DistilGPT2 vectors and labels from 10_embed_dataset.py")
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--lr", type=float, default=0.003)
@@ -93,18 +98,47 @@ def main():
     args = parser.parse_args()
     if args.epochs < 1 or args.batch_size < 1 or args.lr <= 0 or not 0 < args.test_fraction < 0.5:
         parser.error("epochs/batch-size/lr must be positive; test-fraction must be between 0 and 0.5")
-    path = args.dataset.resolve()
     random.seed(args.seed)
     torch.manual_seed(args.seed)
-    examples, counts = load_examples(path)
+    if args.embeddings is not None:
+        # Only load cache files you produced or otherwise trust.
+        cache = torch.load(args.embeddings.resolve(), map_location="cpu", weights_only=True)
+        if cache.get("format_version") != 1 or cache.get("encoder_name") != LANGUAGE_MODEL_ID or cache.get("pooling") != embed_utils.POOLING:
+            raise ValueError("Embedding format or encoder mismatch. Recreate the cache with 10_embed_dataset.py")
+        embeddings, labels = cache["embeddings"], cache["labels"]
+        texts = cache["texts"]
+        if not isinstance(embeddings, torch.Tensor) or embeddings.ndim != 2 or embeddings.shape[1] != 768:
+            raise ValueError("Expected 768-dimensional DistilGPT2 embeddings")
+        if not isinstance(labels, torch.Tensor) or labels.ndim != 1 or len(texts) != len(labels) or len(labels) != len(embeddings):
+            raise ValueError("Embedding/label/text row counts do not match")
+        if not torch.isfinite(embeddings).all():
+            raise ValueError("The embeddings include nonfinite values")
+        labels = labels.long()
+        if any(y not in (0, 1) for y in labels.tolist()):
+            raise ValueError("Unlabeled Common Crawl records found in cache. Review AI sentiment labels and merge into data/train_mixed.csv first.")
+        if embed_utils.digest_rows(texts, labels.tolist()) != cache.get("row_sha256"):
+            raise ValueError("Embedded dataset fingerprint does not match its content")
+        if args.dataset is not None:
+            examples, _ = load_examples(args.dataset.resolve())
+            if embed_utils.digest_rows([t for t, _ in examples], [y for _, y in examples]) != cache["row_sha256"]:
+                raise ValueError("CSV and cached embeddings differ. Re-run 10_embed_dataset.py on this CSV.")
+        examples = list(zip(texts, labels.tolist()))
+        path = Path(cache.get("source_csv", "cached embeddings"))
+        print(f"Using SAVED embeddings from: {args.embeddings.resolve()} (GPT-2 not re-encoded)")
+    else:
+        path = (args.dataset or ROOT / "data" / "sentences.csv").resolve()
+        examples, _ = load_examples(path)
+        print("Loading frozen DistilGPT2 encoder...")
+        tokenizer, encoder = load_language_model()
+        embeddings = encode_texts([t for t, _ in examples], tokenizer, encoder)
+        labels = torch.tensor([y for _, y in examples], dtype=torch.long)
+    counts = [sum(y == label for _, y in examples) for label in (0, 1)]
+    if min(counts) < 5:
+        raise ValueError(f"Need at least five labeled examples per class; have negative={counts[0]}, positive={counts[1]}")
     train_ids, test_ids = stratified_split(examples, args.test_fraction, args.seed)
     print(f"Dataset: {path}")
     print(f"Unique rows: {len(examples)} | Negative: {counts[0]} | Positive: {counts[1]}")
     print(f"Training: {len(train_ids)} | Held-out test: {len(test_ids)}")
-    print("Loading frozen DistilGPT2 encoder...")
-    tokenizer, encoder = load_language_model()
-    embeddings = encode_texts([t for t, _ in examples], tokenizer, encoder)
-    labels = torch.tensor([y for _, y in examples], dtype=torch.long)
     x_train, y_train = embeddings[train_ids], labels[train_ids]
     x_test, y_test = embeddings[test_ids], labels[test_ids]
     print(f"Feature shape: {tuple(embeddings.shape)}")

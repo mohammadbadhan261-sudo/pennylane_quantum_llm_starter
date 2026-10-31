@@ -1,54 +1,9 @@
-# PennyLane + GPT-2 Hybrid Model: Beginner Starter
+# PennyLane + DistilGPT2: Common Crawl AI Embedding Project
 
-This is a learning example, not a production-ready LLM and not a benchmark demonstrating quantum advantage.
+This project downloads samples of genuine Common Crawl WET web text, turns them into numerical vectors using **a frozen DistilGPT2 encoder**, optionally applies local AI sentiment labeling using Ollama, and trains a **4-qubit PennyLane + PyTorch sentiment classifier** from a labeled embedding cache.
 
-## Setup (Windows 10/11 PowerShell in VS Code)
+**Beginner setup and exact VS Code commands:** Read [EMBEDDINGS_GUIDE.md](EMBEDDINGS_GUIDE.md).
 
-1. Install Python 3.12 (64-bit) and the Microsoft VS Code Python extension.
-2. Open this folder via **File > Open Folder** in VS Code.
-3. Select **Terminal > New Terminal** and run:
+**Data pipeline**: Common Crawl WET → cleaned `commoncrawl_raw.csv` → `10_embed_dataset.py` → unlabeled embeddings (`N x 768`); for classification: Ollama suggested labels → manual review → `09_merge_training_data.py` → labeled `train_mixed.csv` → `10_embed_dataset.py` → training from the embedding cache → `03_app.py`.
 
-```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-```
-
-If PowerShell prohibits activation, run:
-
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\.venv\Scripts\Activate.ps1
-```
-
-Alternatively, without activation, run `.\.venv\Scripts\python.exe` instead of `python` in subsequent commands.
-
-Use **Ctrl+Shift+P > Python: Select Interpreter** and choose `.venv\Scripts\python.exe`.
-
-## Run the three stages
-
-```powershell
-python 01_first_quantum_circuit.py
-python 02_train_hybrid_model.py
-python -m streamlit run 03_app.py
-```
-
-The first training run downloads `distilbert/distilgpt2` from Hugging Face (several hundred MB). An internet connection is required for initial download. This is a relatively small pretrained generative language model; its weights remain frozen.
-
-The training script trains only a classical projection, a quantum circuit, and a classifier. The quantum circuit is simulated by PennyLane's `default.qubit` on your CPU. No real quantum hardware is used.
-
-## Structure
-
-- `01_first_quantum_circuit.py`: Hadamard + CNOT Bell state demonstration.
-- `hybrid_model.py`: frozen GPT-2 embedding extraction, quantum PyTorch head.
-- `02_train_hybrid_model.py`: toy dataset, training, evaluation, model checkpoint.
-- `03_app.py`: Streamlit local sentiment prediction app.
-- `models/`: saved weights from training.
-
-## Limitations
-
-- 30 hand-written sample sentences, only 6 test examples. Results are highly unstable and not scientifically meaningful.
-- The language model is not fine-tuned. No new text-generation capabilities or speedups are being claimed.
-- The hybrid classifier may be worse than a normal classical linear classifier.
-- To research actual quantum benefits, compare against classical baselines using larger datasets and independent train/validation/test splits.
+The package does not contain actual downloaded Common Crawl data, model checkpoint or experimental accuracy measurements. The web-text sampling and end-to-end training must run on your computer with internet access. Source data and embedding caches are ignored by Git.
