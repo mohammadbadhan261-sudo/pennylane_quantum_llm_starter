@@ -1,0 +1,3 @@
+pennylane>=0.40,<1.0
+torch>=2.4
+streamlit>=1.39

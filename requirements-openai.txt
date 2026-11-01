@@ -1,0 +1,3 @@
+# Install into the existing PennyLane virtual environment. Do not reinstall datasets.
+openai>=1.60,<4
+# Also requires the existing packages: pennylane, torch and streamlit.

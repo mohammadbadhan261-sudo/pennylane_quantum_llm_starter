@@ -1,4 +1,9 @@
 .venv/
 __pycache__/
 *.pyc
+.env
 models/*.pt
+data/*.pt
+data/*.csv
+!data/sentences.csv
+*.log
